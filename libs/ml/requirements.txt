@@ -1,0 +1,30 @@
+# ML Library Dependencies
+# PyTorch and Deep Learning
+
+torch>=2.0.0
+torchvision>=0.15.0
+onnx>=1.14.0
+onnxruntime>=1.15.0
+
+# Background Removal
+rembg>=2.0.50
+U2Net-pytorch>=1.0.0
+
+# Image Processing
+Pillow>=10.0.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+scikit-image>=0.21.0
+
+# Utilities
+requests>=2.31.0
+tqdm>=4.66.0
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Development
+black>=23.7.0
+flake8>=6.1.0
+mypy>=1.5.0
