@@ -1,0 +1,29 @@
+{
+  "name": "color-correction-system",
+  "version": "1.0.0",
+  "description": "Production color correction system",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "devDependencies": {
+    "turbo": "^1.11.3",
+    "prettier": "^3.1.1",
+    "@types/node": "^20.10.6",
+    "typescript": "^5.3.3",
+    "eslint": "^8.56.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
