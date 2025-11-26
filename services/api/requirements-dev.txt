@@ -1,0 +1,42 @@
+# Development and Testing Dependencies
+# Install with: pip install -r requirements-dev.txt
+
+# Core dependencies (from requirements.txt should also be installed)
+-r requirements.txt
+
+# Testing Framework
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-asyncio>=0.20.0
+pytest-xdist>=3.0.0
+pytest-timeout>=2.1.0
+pytest-mock>=3.10.0
+
+# Code Quality & Linting
+black>=23.0.0
+flake8>=6.0.0
+flake8-docstrings>=1.7.0
+isort>=5.12.0
+mypy>=1.0.0
+pylint>=2.16.0
+bandit>=1.7.5
+
+# Debugging & Development
+ipython>=8.10.0
+ipdb>=0.13.0
+rich>=13.0.0
+
+# Documentation
+sphinx>=6.0.0
+sphinx-rtd-theme>=1.2.0
+
+# Performance Testing
+locust>=2.14.0
+
+# Faker for generating test data
+faker>=18.0.0
+factory-boy>=3.2.0
+
+# Additional testing utilities
+responses>=0.22.0
+freezer>=1.2.0
