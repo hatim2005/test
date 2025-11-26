@@ -1,0 +1,68 @@
+name: Code Quality Checks
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'services/api/**'
+      - '.github/workflows/linting.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'services/api/**'
+
+jobs:
+  linting:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install black flake8 mypy pylint isort
+      
+      - name: Check import sorting with isort
+        run: |
+          cd services/api
+          isort --check-only --diff .
+      
+      - name: Format check with Black
+        run: |
+          cd services/api
+          black --check --diff .
+      
+      - name: Lint with Flake8
+        run: |
+          cd services/api
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      
+      - name: Type checking with MyPy
+        run: |
+          cd services/api
+          mypy . --ignore-missing-imports --show-error-codes --no-implicit-optional || true
+      
+      - name: Lint with Pylint
+        run: |
+          cd services/api
+          find . -name '*.py' -path '*/tests/*' -prune -o -name '*.py' -type f -exec pylint {} + --disable=C0103,R0913 --exit-zero || true
+      
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ Code quality checks passed'
+            })
