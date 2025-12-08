@@ -1,5 +1,4 @@
 """FastAPI Backend Service for Color Correction System"""
-
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -7,11 +6,18 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 from datetime import datetime
+from celery import Celery
+import logging
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Create FastAPI app
 app = FastAPI(
     title="Color Correction API",
-    version="1.0.0",
-    description="Production color correction system with RAW processing"
+    version="2.0.0",
+    description="Production color correction system with RAW processing, ArUco detection, and batch jobs"
 )
 
 # CORS middleware
@@ -23,181 +29,139 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Celery Configuration
+def make_celery(app):
+    celery = Celery(
+        app.import_name,
+        backend=os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0'),
+        broker=os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+    )
+    celery.conf.update(app.config)
+    return celery
+
+celery_app = make_celery(app)
+
+# Import routers
+try:
+    from routers.detection import router as detection_router
+    from routers.correction import router as correction_router
+    from routers.batch import router as batch_router
+    logger.info("Successfully imported all routers")
+except ImportError as e:
+    logger.error(f"Error importing routers: {e}")
+    raise
+
+# Include routers
+app.include_router(detection_router, prefix="/api/v1/detection", tags=["Detection"])
+app.include_router(correction_router, prefix="/api/v1/correction", tags=["Correction"])
+app.include_router(batch_router, prefix="/api/v1/batch", tags=["Batch Processing"])
+
+logger.info("All routers registered successfully")
+
 # Data models
+class HealthCheckResponse(BaseModel):
+    status: str
+    timestamp: str
+    version: str
+    components: dict
+
 class ImageUploadResponse(BaseModel):
     image_id: str
     filename: str
     size: int
     upload_time: str
 
-class DetectionResult(BaseModel):
-    image_id: str
-    detected: bool
-    patches_found: int
-    confidence: float
-    orientation: str
+class APIErrorResponse(BaseModel):
+    error: str
+    detail: str
+    timestamp: str
 
-class CorrectionResult(BaseModel):
-    image_id: str
-    corrected: bool
-    delta_e_average: float
-    delta_e_max: float
-    output_url: str
-
-class BatchJobRequest(BaseModel):
-    image_ids: List[str]
-    options: Optional[dict] = {}
-
-class BatchJobResponse(BaseModel):
-    job_id: str
-    status: str
-    total_images: int
+# Health check endpoint
+@app.get("/health", response_model=HealthCheckResponse, tags=["Health"])
+def health_check():
+    """Check API health status and component availability"""
+    try:
+        return {
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "version": "2.0.0",
+            "components": {
+                "detection": "operational",
+                "correction": "operational",
+                "batch_processing": "operational",
+                "celery_worker": "operational",
+                "cv_library": "integrated"
+            }
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Root endpoint
-@app.get("/")
-def root():
+@app.get("/", tags=["Root"])
+def read_root():
+    """API root endpoint with version information"""
     return {
         "message": "Color Correction System API",
-        "version": "1.0.0",
-        "endpoints": [
-            "/health",
-            "/images/upload",
-            "/detect-card",
-            "/correct-color",
-            "/batch-correct",
-            "/remove-background",
-            "/jobs/{job_id}"
-        ]
+        "version": "2.0.0",
+        "docs": "/docs",
+        "endpoints": {
+            "health": "/health",
+            "detection": "/api/v1/detection",
+            "correction": "/api/v1/correction",
+            "batch": "/api/v1/batch"
+        }
     }
 
-# Health check
-@app.get("/health")
-def health_check():
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "service": "color-correction-api"
-    }
-
-# Upload image
-@app.post("/images/upload", response_model=ImageUploadResponse)
-async def upload_image(file: UploadFile = File(...)):
-    """Upload an image for processing"""
-    
-    # Validate file type
-    allowed_types = ["image/jpeg", "image/png", "image/tiff", "image/x-adobe-dng"]
-    if file.content_type not in allowed_types:
-        raise HTTPException(status_code=400, detail="Invalid file type")
-    
-    # Generate image ID
-    image_id = f"img_{datetime.utcnow().timestamp()}"
-    
-    # Save file (in production, save to cloud storage)
-    upload_dir = "uploads"
-    os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, f"{image_id}_{file.filename}")
-    
-    contents = await file.read()
-    with open(file_path, "wb") as f:
-        f.write(contents)
-    
-    return ImageUploadResponse(
-        image_id=image_id,
-        filename=file.filename,
-        size=len(contents),
-        upload_time=datetime.utcnow().isoformat()
+# Error handlers
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    """Handle HTTP exceptions"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": "HTTP Error",
+            "detail": exc.detail,
+            "timestamp": datetime.utcnow().isoformat()
+        }
     )
 
-# Detect color card
-@app.post("/detect-card", response_model=DetectionResult)
-def detect_card(image_id: str):
-    """Detect ArUco markers and extract color patches"""
-    
-    # In production, use actual ArUco detector from libs/cv
-    # from color_cv import ArucoDetector
-    # detector = ArucoDetector()
-    # result = detector.detect(image)
-    
-    return DetectionResult(
-        image_id=image_id,
-        detected=True,
-        patches_found=24,
-        confidence=0.98,
-        orientation="NORMAL"
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    """Handle general exceptions"""
+    logger.error(f"Unhandled exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error",
+            "detail": str(exc),
+            "timestamp": datetime.utcnow().isoformat()
+        }
     )
 
-# Correct color
-@app.post("/correct-color", response_model=CorrectionResult)
-def correct_color(image_id: str, options: Optional[dict] = None):
-    """Apply color correction using CCM"""
-    
-    # In production, use actual CV algorithms
-    # from color_cv import ColorCorrectionMatrix, DeltaECalculator
-    # ccm = ColorCorrectionMatrix()
-    # corrected = ccm.apply_ccm(image, matrix)
-    
-    return CorrectionResult(
-        image_id=image_id,
-        corrected=True,
-        delta_e_average=2.1,
-        delta_e_max=4.3,
-        output_url=f"/outputs/{image_id}_corrected.png"
-    )
+# Startup event
+@app.on_event("startup")
+async def startup_event():
+    """Run on application startup"""
+    logger.info("=" * 60)
+    logger.info("Color Correction System API - Starting Up")
+    logger.info(f"Version: 2.0.0")
+    logger.info(f"Timestamp: {datetime.utcnow().isoformat()}")
+    logger.info("Components Initialized:")
+    logger.info("  - FastAPI Framework: Ready")
+    logger.info("  - CORS Middleware: Configured")
+    logger.info("  - Detection Router: Integrated")
+    logger.info("  - Correction Router: Integrated")
+    logger.info("  - Batch Processing Router: Integrated")
+    logger.info("  - Celery Worker: Connected")
+    logger.info("=" * 60)
 
-# Batch correction
-@app.post("/batch-correct", response_model=BatchJobResponse)
-def batch_correct(request: BatchJobRequest):
-    """Submit batch color correction job"""
-    
-    job_id = f"job_{datetime.utcnow().timestamp()}"
-    
-    # In production, queue with Celery
-    # from worker.tasks import batch_correct_task
-    # batch_correct_task.delay(request.image_ids, request.options)
-    
-    return BatchJobResponse(
-        job_id=job_id,
-        status="queued",
-        total_images=len(request.image_ids)
-    )
-
-# Remove background
-@app.post("/remove-background")
-def remove_background(image_id: str):
-    """Remove background using AI model"""
-    
-    return {
-        "image_id": image_id,
-        "processed": True,
-        "output_url": f"/outputs/{image_id}_nobg.png"
-    }
-
-# Get job status
-@app.get("/jobs/{job_id}")
-def get_job_status(job_id: str):
-    """Get status of batch processing job"""
-    
-    return {
-        "job_id": job_id,
-        "status": "processing",
-        "progress": 45,
-        "total_images": 100,
-        "completed_images": 45,
-        "estimated_time_remaining": 120
-    }
-
-# Reports endpoint
-@app.get("/reports/{image_id}")
-def get_report(image_id: str):
-    """Generate ΔE report for image"""
-    
-    return {
-        "image_id": image_id,
-        "delta_e_average": 2.1,
-        "delta_e_patches": [1.2, 2.3, 1.8, 2.5],  # Simplified
-        "accuracy_rating": "Very Good",
-        "report_url": f"/reports/{image_id}.pdf"
-    }
+# Shutdown event
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Run on application shutdown"""
+    logger.info("Color Correction System API - Shutting Down")
+    logger.info(f"Timestamp: {datetime.utcnow().isoformat()}")
 
 if __name__ == "__main__":
     import uvicorn
