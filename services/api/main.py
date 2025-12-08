@@ -46,17 +46,24 @@ try:
     from routers.detection import router as detection_router
     from routers.correction import router as correction_router
     from routers.batch import router as batch_router
+    from routers.auth import router as auth_router
+    from routers.images import router as images_router
+    from routers.jobs import router as jobs_router
+    from routers.results import router as results_router
     logger.info("Successfully imported all routers")
 except ImportError as e:
     logger.error(f"Error importing routers: {e}")
     raise
 
 # Include routers
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
+app.include_router(images_router, prefix="/api/v1/images", tags=["Image Management"])
+app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["Job Management"])
+app.include_router(results_router, prefix="/api/v1/results", tags=["Results"])
 app.include_router(detection_router, prefix="/api/v1/detection", tags=["Detection"])
 app.include_router(correction_router, prefix="/api/v1/correction", tags=["Correction"])
 app.include_router(batch_router, prefix="/api/v1/batch", tags=["Batch Processing"])
-
-logger.info("All routers registered successfully")
+logger.info("All 7 routers registered successfully")
 
 # Data models
 class HealthCheckResponse(BaseModel):
@@ -86,6 +93,10 @@ def health_check():
             "timestamp": datetime.utcnow().isoformat(),
             "version": "2.0.0",
             "components": {
+                "authentication": "operational",
+                "image_management": "operational",
+                "job_management": "operational",
+                "results_tracking": "operational",
                 "detection": "operational",
                 "correction": "operational",
                 "batch_processing": "operational",
@@ -107,6 +118,10 @@ def read_root():
         "docs": "/docs",
         "endpoints": {
             "health": "/health",
+            "auth": "/api/v1/auth",
+            "images": "/api/v1/images",
+            "jobs": "/api/v1/jobs",
+            "results": "/api/v1/results",
             "detection": "/api/v1/detection",
             "correction": "/api/v1/correction",
             "batch": "/api/v1/batch"
@@ -143,18 +158,22 @@ async def general_exception_handler(request, exc):
 @app.on_event("startup")
 async def startup_event():
     """Run on application startup"""
-    logger.info("=" * 60)
+    logger.info("=" * 70)
     logger.info("Color Correction System API - Starting Up")
     logger.info(f"Version: 2.0.0")
     logger.info(f"Timestamp: {datetime.utcnow().isoformat()}")
     logger.info("Components Initialized:")
-    logger.info("  - FastAPI Framework: Ready")
-    logger.info("  - CORS Middleware: Configured")
-    logger.info("  - Detection Router: Integrated")
-    logger.info("  - Correction Router: Integrated")
-    logger.info("  - Batch Processing Router: Integrated")
-    logger.info("  - Celery Worker: Connected")
-    logger.info("=" * 60)
+    logger.info(" - FastAPI Framework: Ready")
+    logger.info(" - CORS Middleware: Configured")
+    logger.info(" - Authentication Router: Integrated")
+    logger.info(" - Image Management Router: Integrated")
+    logger.info(" - Job Management Router: Integrated")
+    logger.info(" - Results Tracking Router: Integrated")
+    logger.info(" - Detection Router: Integrated")
+    logger.info(" - Correction Router: Integrated")
+    logger.info(" - Batch Processing Router: Integrated")
+    logger.info(" - Celery Worker: Connected")
+    logger.info("=" * 70)
 
 # Shutdown event
 @app.on_event("shutdown")
